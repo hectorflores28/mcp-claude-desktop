@@ -1,87 +1,84 @@
 # MCP Claude Desktop
 
-![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.110.0-009688.svg)
-![Redis](https://img.shields.io/badge/Redis-5.0.2-DC382D.svg)
-![Docker](https://img.shields.io/badge/Docker-Contenedor-2496ED.svg)
-![Claude](https://img.shields.io/badge/Anthropic-Claude-FF6B6B.svg)
-![API](https://img.shields.io/badge/API-REST-00C853.svg)
-![Testing](https://img.shields.io/badge/Testing-Pytest-FF9800.svg)
-![Status](https://img.shields.io/badge/Estado-Activo-brightgreen.svg)
-[![License: MIT](https://img.shields.io/badge/Licencia-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+> ⚠️ **Proyecto histórico / archivado**
+> Este proyecto fue construido en una época donde los MCPs (Model Context Protocol) no tenían integración nativa con Claude Desktop. Hoy el SDK oficial de Anthropic cubre todo esto de forma mucho más limpia. Se mantiene como referencia de lo que se hacía antes.
 
-## Acerca del proyecto
-![Servidor](src/public/screenshot.png)
-Aplicación de escritorio que integra la API de Claude de Anthropic, proporcionando una interfaz local para interactuar con el modelo de lenguaje. Incluye funcionalidades de caché, procesamiento asíncrono y una API REST para integración con otras aplicaciones.
+---
 
-## Tecnologías principales
+## ¿Qué era esto?
+
+Un servidor **FastAPI** que actuaba como puente entre Claude Desktop y herramientas personalizadas, cuando el ecosistema MCP estaba apenas empezando y no había integraciones nativas.
+
+Fue construido con Claude para resolver un problema real en el momento: poder darle a Claude acceso a filesystem local, búsqueda web (Brave), caché y herramientas custom, sin esperar a que el tooling oficial madurara.
+
+### Lo que hacía
+
+- Exponía una **API REST** que Claude Desktop consumía como si fuera un servidor MCP
+- **Filesystem**: leer, escribir y listar archivos locales
+- **Brave Search**: búsquedas web con análisis opcional via Claude
+- **Caché con Redis**: evitar llamadas redundantes a la API de Anthropic
+- **Auth con JWT**: proteger los endpoints locales
+- **Plugins**: sistema de hooks para extender funcionalidad
+- **Métricas con Prometheus**: monitoreo de uso y rendimiento
+- **Logging estructurado**: logs en JSON y Markdown
+
+### Stack
+
 - Python 3.11+
-- FastAPI para la API REST
-- Redis para caché y almacenamiento
-- Docker para contenedorización
-- Claude API de Anthropic
-- Pytest para testing
+- FastAPI + Uvicorn
+- Redis (caché)
+- Anthropic SDK (`anthropic==0.19.1`)
+- Pydantic v2
+- Pytest
 
-## Características
-- Interfaz de escritorio para Claude
-- API REST local para integración
-- Sistema de caché con Redis
-- Procesamiento asíncrono
-- Manejo de archivos y formularios
-- Sistema de logging robusto
-- Métricas con Prometheus
-- Testing automatizado
+---
 
-## Estructura del proyecto
-```bash
-├── app/              # Código principal de la aplicación
-├── src/              # Código fuente adicional
-├── tests/            # Tests automatizados
-├── docs/             # Documentación
-├── plugins/          # Plugins y extensiones
-├── uploads/          # Directorio para archivos subidos
-├── logs/             # Logs de la aplicación
-└── temp/             # Archivos temporales
+## ¿Por qué está archivado?
+
+Desde 2024-2025 el protocolo MCP es nativo en Claude Desktop y existe el [SDK oficial de MCP](https://github.com/modelcontextprotocol/python-sdk) de Anthropic. Lo que este proyecto hacía con ~2000 líneas de FastAPI + Redis + JWT, hoy se hace en ~100 líneas con el SDK oficial, sin servidor HTTP, sin Docker, sin Redis.
+
+Si buscas construir un MCP server hoy, ve directamente a:
+- [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
+- [Documentación MCP oficial](https://modelcontextprotocol.io)
+
+---
+
+## Estructura (para referencia histórica)
+
+```
+app/
+├── api/endpoints/     # Endpoints: claude, filesystem, search, tools, mcp...
+├── core/              # Config, security, claude_client, mcp_config
+├── services/          # claude_service, filesystem_service, brave_search, mcp_service
+├── schemas/           # Modelos Pydantic
+├── middleware/        # Auth JWT, rate limiting
+└── main.py
+tests/                 # Unit, integration, concurrency, performance
+run.py
 ```
 
-## Requisitos
-- Python 3.11+
-- Redis
-- Docker (opcional)
-- API Key de Anthropic
+---
 
-## Instalación
-1. Clona el repositorio
-2. Crea un entorno virtual: `python -m venv .venv`
-3. Activa el entorno: `.venv\Scripts\activate` (Windows)
-4. Instala dependencias: `pip install -r requirements.txt`
-5. Configura las variables de entorno (ver .env.example)
+## Instalación (solo si quieres explorarlo)
 
-## Uso
-1. Inicia Redis
-2. Ejecuta la aplicación: `python run.py`
-3. Accede a la interfaz web en `http://localhost:8000`
-
-## Desarrollo
 ```bash
-# Instalar dependencias de desarrollo
+python -m venv .venv
+.venv\Scripts\activate       # Windows
 pip install -r requirements.txt
-
-# Ejecutar tests
-pytest
-
-# Formatear código
-black .
-isort .
+cp .env.example .env         # Configurar variables
+python run.py
 ```
 
-## Contribuciones
-Las contribuciones son bienvenidas. Por favor:
-1. Haz un fork del proyecto
-2. Crea tu rama (`git checkout -b feature/nueva-funcionalidad`)
-3. Commitea tus cambios (`git commit -m 'Agrega una funcionalidad'`)
-4. Haz push a la rama (`git push origin feature/nueva-funcionalidad`)
-5. Abre un Pull Request
+Requería Redis corriendo localmente y una API key de Anthropic + Brave Search.
+
+---
+
+## Contexto
+
+Construido en Querétaro, México, durante los primeros meses del ecosistema MCP (early 2024), cuando los únicos servidores MCP disponibles eran experimentales y Claude Desktop apenas comenzaba a soportar el protocolo. Este proyecto fue una solución pragmática mientras el tooling maduraba.
+
+---
 
 ## Licencia
-Este proyecto está bajo la Licencia MIT. Consulta el archivo [LICENSE](./LICENSE) para más detalles.
+
+MIT — úsalo como referencia si te es útil.

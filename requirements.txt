@@ -1,39 +1,44 @@
+# ============================================================
+# NOTA HISTÓRICA
+# Este proyecto fue construido cuando los MCPs (Model Context Protocol)
+# no tenían integración nativa con Claude Desktop. Simulaba un servidor
+# MCP mediante una API REST con FastAPI + Redis.
+# Hoy (2025+) esto está superseded por el SDK oficial de MCP de Anthropic.
+# ============================================================
+
 # API y Servidor Web
-fastapi==0.110.0          # Framework web moderno y rápido
-uvicorn==0.27.1          # Servidor ASGI de alto rendimiento
-pydantic==2.6.4          # Validación de datos y configuraciones
-pydantic-settings==2.2.1 # Configuraciones basadas en Pydantic
-python-dotenv==1.0.1     # Manejo de variables de entorno
+fastapi==0.110.0
+uvicorn==0.27.1
+pydantic==2.6.4
+pydantic-settings==2.2.1
+python-dotenv==1.0.1
 
-# Bases de datos y Caché
-redis==5.0.2             # Cliente Redis para caché y almacenamiento
-aioredis==2.0.1         # Cliente Redis asíncrono
+# Caché (Redis — reemplazable por in-memory en implementaciones modernas)
+redis==5.0.2
+aioredis==2.0.1
 
-# Cliente HTTP y Networking
-httpx==0.27.0           # Cliente HTTP/2 asíncrono
-aiofiles==24.1.0        # Operaciones de archivo asíncronas
-python-multipart==0.0.9 # Manejo de formularios multipart
+# Cliente HTTP y archivos
+httpx==0.27.0
+aiofiles==24.1.0
+python-multipart==0.0.9
 
-# Seguridad y Autenticación
-python-jose==3.3.0      # Implementación de JWT
-passlib==1.7.4          # Biblioteca de hashing de contraseñas
-bcrypt==4.1.2           # Algoritmo de hashing bcrypt
+# Seguridad / Auth (JWT manual — hoy innecesario en MCPs locales)
+python-jose==3.3.0
+passlib==1.7.4
+bcrypt==4.1.2
 
-# API de Claude y procesamiento
-anthropic==0.19.1       # Cliente oficial de Anthropic
-python-magic-bin==0.4.14  # Detección de tipos MIME (versión precompilada)
-backoff==2.2.1         # Reintentos exponenciales
+# Claude API
+anthropic==0.19.1
+backoff==2.2.1
 
-# Monitoreo y Logging
-prometheus-client==0.20.0 # Métricas para Prometheus
-python-json-logger==2.0.7 # Logging en formato JSON
-distro==1.9.0           # Información del sistema operativo
+# Monitoreo
+prometheus-client==0.20.0
+python-json-logger==2.0.7
 
 # Utilidades
-anyio==4.3.0            # Biblioteca de IO asíncrono
-sniffio==1.3.1         # Detección de bucle de eventos
-typing-extensions==4.10.0 # Extensiones de tipado
-jiter==0.9.0           # Utilidades JSON
+anyio==4.3.0
+sniffio==1.3.1
+typing-extensions==4.10.0
 
 # Testing
 pytest==8.0.2
@@ -41,11 +46,9 @@ pytest-asyncio==0.23.5.post1
 pytest-cov==4.1.0
 pytest-mock==3.12.0
 pytest-env==1.1.3
-pytest-xdist==3.5.0
 coverage==7.4.3
 
-# Desarrollo y Linting
-black==24.2.0          # Formateador de código
-isort==5.13.2         # Ordenamiento de imports
-mypy==1.9.0           # Verificación de tipos estática
-flake8==7.0.0         # Linter de código 
+# Desarrollo
+black==24.2.0
+isort==5.13.2
+flake8==7.0.0
