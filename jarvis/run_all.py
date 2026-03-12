@@ -1,94 +1,182 @@
-Utiiza @jarvis para Eres un experto en arquitectura de software y Model Context Protocol (MCP).
+"""
+JARVIS - run_all.py
+Levanta los 4 servidores MCP en procesos paralelos con un solo comando:
+    python run_all.py
 
-Necesito construir un sistema de asistente de voz conversacional llamado JARVIS, 
-compuesto por 4 servidores MCP independientes en Python. Cada uno cumple un rol 
-específico. Genera la estructura completa de carpetas y archivos para los 4 servidores.
+Servidores:
+  - voice-jarvis   : Text-to-Speech (ElevenLabs)
+  - voice-listener : Speech-to-Text (Whisper)
+  - jarvis-skills  : Gestión de Skills / System Prompts
+  - jarvis-memory  : Gestión de Datasets / Conocimiento
+"""
 
-## ARQUITECTURA GENERAL
-Usuario habla → [voice-listener] → texto → Claude API → respuesta → [voice-jarvis] → audio
-                                              ↑
-                               [jarvis-skills] + [jarvis-memory]
+import subprocess
+import sys
+import os
+import signal
+import time
+import threading
+from pathlib import Path
 
----
+# ─── Directorio base (donde está este script) ────────────────────────────────
+BASE_DIR = Path(__file__).parent.resolve()
 
-## SERVIDOR 1: voice-jarvis (Text-to-Speech)
-- Nombre MCP: voice-jarvis
-- Tool: say(texto: str)
-- Usa ElevenLabs API con voz configurable (default: "Adam")
-- Lee ELEVENLABS_API_KEY desde .env
-- Ya existe como referencia, solo necesita documentación y estructura limpia
+# ─── Definición de servidores ────────────────────────────────────────────────
+SERVIDORES = [
+    {
+        "nombre": "voice-jarvis",
+        "script": BASE_DIR / "voice_jarvis" / "server.py",
+        "color": "\033[94m",   # Azul
+    },
+    {
+        "nombre": "voice-listener",
+        "script": BASE_DIR / "voice_listener" / "server.py",
+        "color": "\033[92m",   # Verde
+    },
+    {
+        "nombre": "jarvis-skills",
+        "script": BASE_DIR / "jarvis_skill" / "server.py",
+        "color": "\033[93m",   # Amarillo
+    },
+    {
+        "nombre": "jarvis-memory",
+        "script": BASE_DIR / "jarvis_memory" / "server.py",
+        "color": "\033[95m",   # Magenta
+    },
+]
 
----
+RESET = "\033[0m"
+ROJO  = "\033[91m"
+BOLD  = "\033[1m"
+CYAN  = "\033[96m"
 
-## SERVIDOR 2: voice-listener (Speech-to-Text)
-- Nombre MCP: voice-listener
-- Tool: listen() → devuelve el texto transcrito
-- Graba audio desde el micrófono del sistema
-- Detecta silencio automáticamente para cortar la grabación
-- Usa faster-whisper (local, sin costo) para transcribir
-- Soporte para español e inglés (configurable en .env con WHISPER_LANGUAGE)
-- Dependencias: faster-whisper, pyaudio, sounddevice, numpy
+procesos = []
 
----
 
-## SERVIDOR 3: jarvis-skills (Gestión de Skills / System Prompts)
-- Nombre MCP: jarvis-skills
-- Tools:
-  - save_skill(name: str, system_prompt: str, description: str) → guarda en skills.json
-  - get_skill(name: str) → devuelve el system prompt de esa skill
-  - list_skills() → lista todas las skills disponibles
-  - delete_skill(name: str) → elimina una skill
-- Persiste en archivo local skills.json
-- Una skill define: nombre, descripción, system_prompt, fecha de creación
+def log(nombre, color, mensaje):
+    timestamp = time.strftime("%H:%M:%S")
+    print(f"{CYAN}[{timestamp}]{RESET} {color}{BOLD}[{nombre}]{RESET} {mensaje}", flush=True)
 
----
 
-## SERVIDOR 4: jarvis-memory (Datasets / Conocimiento)
-- Nombre MCP: jarvis-memory
-- Tools:
-  - save_dataset(name: str, content: str, tags: list[str]) → guarda en datasets/
-  - get_dataset(name: str) → devuelve el contenido
-  - search_datasets(query: str) → búsqueda simple por tags o nombre
-  - list_datasets() → lista todos los datasets disponibles
-  - delete_dataset(name: str) → elimina un dataset
-- Cada dataset se guarda como archivo .json en carpeta datasets/
-- Útil para alimentar contexto a Claude (RAG básico)
+def leer_salida(nombre, color, stream, etiqueta="OUT"):
+    """Lee un stream de un proceso línea por línea e imprime con color."""
+    try:
+        for linea in iter(stream.readline, ""):
+            linea = linea.rstrip()
+            if linea:
+                log(nombre, color, linea)
+    except Exception:
+        pass
 
----
 
-## ESTRUCTURA DE CARPETAS ESPERADA
+def iniciar_servidores():
+    """Lanza cada servidor en un subproceso independiente."""
+    python = sys.executable  # Usa el mismo Python que corre este script
 
-jarvis/
-├── voice-jarvis/
-│   ├── server.py
-│   ├── requirements.txt
-│   └── .env.example
-├── voice-listener/
-│   ├── server.py
-│   ├── requirements.txt
-│   └── .env.example
-├── jarvis-skills/
-│   ├── server.py
-│   ├── skills.json
-│   ├── requirements.txt
-│   └── .env.example
-├── jarvis-memory/
-│   ├── server.py
-│   ├── datasets/
-│   ├── requirements.txt
-│   └── .env.example
-├── claude_desktop_config.json   ← configuración final para conectar los 4 MCPs
-└── README.md
+    for srv in SERVIDORES:
+        script = srv["script"]
 
----
+        if not script.exists():
+            log(srv["nombre"], ROJO, f"⚠️  Script no encontrado: {script}")
+            continue
 
-## REQUISITOS TÉCNICOS PARA TODOS LOS SERVIDORES
-- Usar el SDK oficial de MCP para Python: mcp
-- Cada server.py debe poder ejecutarse con: python server.py
-- Manejo de errores con mensajes claros
-- Variables de configuración en .env con python-dotenv
-- Código comentado en español
+        log(srv["nombre"], srv["color"], f"Iniciando → {script}")
 
-## OUTPUT ESPERADO
-Genera todos los archivos completos y funcionales, listos para ejecutar.
-Incluye el claude_desktop_config.json final con los 4 servidores configurados.
+        try:
+            proceso = subprocess.Popen(
+                [python, str(script)],
+                cwd=str(script.parent),      # Ejecutar desde carpeta del servidor (carga .env correctamente)
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+                encoding="utf-8",
+                errors="replace"
+            )
+
+            # Hilo para stdout
+            hilo_out = threading.Thread(
+                target=leer_salida,
+                args=(srv["nombre"], srv["color"], proceso.stdout, "OUT"),
+                daemon=True
+            )
+            hilo_out.start()
+
+            # Hilo para stderr (errores también visibles)
+            hilo_err = threading.Thread(
+                target=leer_salida,
+                args=(srv["nombre"], ROJO, proceso.stderr, "ERR"),
+                daemon=True
+            )
+            hilo_err.start()
+
+            procesos.append({
+                "nombre": srv["nombre"],
+                "color": srv["color"],
+                "proceso": proceso
+            })
+
+            log(srv["nombre"], srv["color"], f"✅ PID {proceso.pid} — listo")
+
+        except Exception as e:
+            log(srv["nombre"], ROJO, f"❌ Error al iniciar: {e}")
+
+    print(f"\n{BOLD}{'─'*50}", flush=True)
+    print(f"✅  {len(procesos)}/4 servidor(es) activos.")
+    print(f"🛑  Presiona Ctrl+C para detener todos.")
+    print(f"{'─'*50}{RESET}\n", flush=True)
+
+
+def monitorear():
+    """Mantiene el script vivo y vigila que los procesos no mueran."""
+    try:
+        while True:
+            time.sleep(2)
+            for srv in procesos:
+                codigo = srv["proceso"].poll()
+                if codigo is not None:
+                    log(srv["nombre"], ROJO,
+                        f"⚠️  Proceso terminó inesperadamente (código: {codigo}). "
+                        f"Revisa el log de errores arriba.")
+    except KeyboardInterrupt:
+        detener_todos()
+
+
+def detener_todos():
+    """Termina todos los subprocesos limpiamente."""
+    print(f"\n{BOLD}🛑  Deteniendo todos los servidores JARVIS...{RESET}", flush=True)
+    for srv in procesos:
+        try:
+            srv["proceso"].terminate()
+            srv["proceso"].wait(timeout=5)
+            log(srv["nombre"], srv["color"], "Detenido ✓")
+        except subprocess.TimeoutExpired:
+            srv["proceso"].kill()
+            log(srv["nombre"], ROJO, "Forzado a cerrar (kill)")
+        except Exception as e:
+            log(srv["nombre"], ROJO, f"Error al detener: {e}")
+    print(f"\n{BOLD}👋  JARVIS offline.{RESET}\n", flush=True)
+    sys.exit(0)
+
+
+# ─── Manejo de señales (Ctrl+C en Windows/Linux) ─────────────────────────────
+signal.signal(signal.SIGINT, lambda s, f: detener_todos())
+if hasattr(signal, "SIGTERM"):
+    signal.signal(signal.SIGTERM, lambda s, f: detener_todos())
+
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    print(f"""
+{BOLD}{CYAN}╔══════════════════════════════════════╗
+║          🤖  JARVIS  MCP             ║
+║     Sistema de Asistente de Voz      ║
+╚══════════════════════════════════════╝{RESET}
+
+  Directorio base : {BASE_DIR}
+  Python          : {sys.executable}
+  Servidores      : {len(SERVIDORES)}
+""", flush=True)
+
+    iniciar_servidores()
+    monitorear()
