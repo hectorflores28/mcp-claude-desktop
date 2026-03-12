@@ -1,5 +1,3 @@
 faster-whisper
-sounddevice
-soundfile
-numpy
+pyaudio
 python-dotenv

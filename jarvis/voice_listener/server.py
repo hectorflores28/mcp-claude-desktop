@@ -1,65 +1,107 @@
 """
 JARVIS - voice-listener (Speech-to-Text)
 Servidor MCP para capturar voz del micrófono y transcribirla con faster-whisper.
+Usa PyAudio para compatibilidad con Windows MME.
 """
 
 from mcp.server.fastmcp import FastMCP
 import os
 import tempfile
-import numpy as np
-import sounddevice as sd
-import soundfile as sf
+import wave
+import struct
+import math
+import pyaudio
 from faster_whisper import WhisperModel
 from dotenv import load_dotenv
 
-# Cargar variables de entorno
 load_dotenv()
 
 mcp = FastMCP("voice-listener")
 
-# Configuración desde .env
-WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base")
-WHISPER_LANGUAGE = os.getenv("WHISPER_LANGUAGE", "es")
-SAMPLE_RATE = int(os.getenv("SAMPLE_RATE", "16000"))
-SILENCE_THRESHOLD = float(os.getenv("SILENCE_THRESHOLD", "0.01"))
-SILENCE_DURATION = float(os.getenv("SILENCE_DURATION", "2.0"))  # segundos de silencio para cortar
-MAX_DURATION = int(os.getenv("MAX_DURATION", "30"))  # segundos máximos de grabación
+# ─── Configuración ────────────────────────────────────────────────────────────
+WHISPER_MODEL_SIZE  = os.getenv("WHISPER_MODEL_SIZE", "base")
+WHISPER_LANGUAGE    = os.getenv("WHISPER_LANGUAGE", "es")
+SAMPLE_RATE         = int(os.getenv("SAMPLE_RATE", "16000"))
+CHUNK               = int(os.getenv("CHUNK", "1024"))
+SILENCE_THRESHOLD   = float(os.getenv("SILENCE_THRESHOLD", "500"))   # RMS amplitude
+SILENCE_DURATION    = float(os.getenv("SILENCE_DURATION", "2.0"))    # segundos de silencio para cortar
+MAX_DURATION        = int(os.getenv("MAX_DURATION", "30"))            # segundos máximos
+DEVICE_INDEX        = os.getenv("DEVICE_INDEX", None)                 # None = default del sistema
 
-# Cargar modelo Whisper una sola vez al iniciar
+# ─── Cargar modelo Whisper una sola vez ───────────────────────────────────────
 print(f"[voice-listener] Cargando modelo Whisper '{WHISPER_MODEL_SIZE}'...")
 whisper_model = WhisperModel(WHISPER_MODEL_SIZE, device="cpu", compute_type="int8")
-print("[voice-listener] Modelo listo.")
+print("[voice-listener] Modelo listo. Esperando llamadas...")
 
 
-def grabar_hasta_silencio() -> np.ndarray:
+def calcular_rms(data: bytes) -> float:
+    """Calcula el nivel RMS (volumen) de un chunk de audio PCM 16-bit."""
+    count = len(data) // 2
+    if count == 0:
+        return 0.0
+    shorts = struct.unpack(f"{count}h", data)
+    sum_sq = sum(s * s for s in shorts)
+    return math.sqrt(sum_sq / count)
+
+
+def grabar_hasta_silencio() -> str:
     """
-    Graba audio desde el micrófono y corta automáticamente
-    cuando detecta silencio prolongado.
+    Graba audio con PyAudio hasta detectar silencio prolongado.
+    Devuelve la ruta del archivo WAV temporal.
     """
+    pa = pyaudio.PyAudio()
+
+    # Seleccionar dispositivo
+    device_index = int(DEVICE_INDEX) if DEVICE_INDEX is not None else None
+
+    # Abrir stream de entrada
+    stream = pa.open(
+        format=pyaudio.paInt16,
+        channels=1,
+        rate=SAMPLE_RATE,
+        input=True,
+        input_device_index=device_index,
+        frames_per_buffer=CHUNK
+    )
+
+    print("[voice-listener] 🎤 Escuchando... (habla ahora)")
+
     frames = []
-    silence_frames = 0
-    silence_limit = int(SILENCE_DURATION * SAMPLE_RATE / 1024)
+    silence_chunks = 0
+    silence_limit   = int(SILENCE_DURATION * SAMPLE_RATE / CHUNK)
+    max_chunks       = int(MAX_DURATION    * SAMPLE_RATE / CHUNK)
+    has_voice        = False
 
-    print("[voice-listener] Escuchando... (habla ahora)")
+    for _ in range(max_chunks):
+        data = stream.read(CHUNK, exception_on_overflow=False)
+        frames.append(data)
+        rms = calcular_rms(data)
 
-    with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype='float32', blocksize=1024) as stream:
-        for _ in range(int(MAX_DURATION * SAMPLE_RATE / 1024)):
-            data, _ = stream.read(1024)
-            frames.append(data.copy())
+        if rms > SILENCE_THRESHOLD:
+            has_voice = True
+            silence_chunks = 0
+        else:
+            if has_voice:               # Solo contar silencio después de detectar voz
+                silence_chunks += 1
 
-            # Detectar silencio por nivel de volumen RMS
-            rms = np.sqrt(np.mean(data ** 2))
-            if rms < SILENCE_THRESHOLD:
-                silence_frames += 1
-            else:
-                silence_frames = 0  # Reiniciar contador si hay sonido
+        if has_voice and silence_chunks >= silence_limit:
+            break
 
-            # Cortar si hay suficiente silencio (y ya grabamos algo)
-            if silence_frames >= silence_limit and len(frames) > silence_limit:
-                break
+    stream.stop_stream()
+    stream.close()
+    pa.terminate()
 
-    print("[voice-listener] Silencio detectado, procesando...")
-    return np.concatenate(frames, axis=0)
+    print("[voice-listener] ✅ Silencio detectado, procesando audio...")
+
+    # Guardar como WAV temporal
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+    with wave.open(tmp.name, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)   # 16-bit = 2 bytes
+        wf.setframerate(SAMPLE_RATE)
+        wf.writeframes(b"".join(frames))
+
+    return tmp.name
 
 
 @mcp.tool(name="listen", description="Escucha el micrófono y transcribe lo que dice el usuario usando Whisper")
@@ -70,13 +112,7 @@ def listen() -> str:
     Devuelve el texto transcrito.
     """
     try:
-        # Grabar audio
-        audio_data = grabar_hasta_silencio()
-
-        # Guardar audio temporal como WAV
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
-            sf.write(f.name, audio_data, SAMPLE_RATE)
-            tmp_path = f.name
+        tmp_path = grabar_hasta_silencio()
 
         # Transcribir con Whisper
         segments, info = whisper_model.transcribe(
@@ -85,20 +121,41 @@ def listen() -> str:
             beam_size=5
         )
 
-        # Limpiar archivo temporal
         os.unlink(tmp_path)
 
-        # Unir segmentos transcritos
-        texto = " ".join([seg.text.strip() for seg in segments])
+        texto = " ".join(seg.text.strip() for seg in segments).strip()
 
         if texto:
-            print(f"[voice-listener] Transcripción: {texto}")
+            print(f"[voice-listener] 📝 Transcripción: {texto}")
             return texto
         else:
             return "No se detectó texto en el audio."
 
     except Exception as e:
         return f"Error al escuchar/transcribir: {str(e)}"
+
+
+@mcp.tool(name="list_audio_devices", description="Lista los dispositivos de audio disponibles en el sistema")
+def list_audio_devices() -> str:
+    """
+    Útil para diagnosticar qué dispositivos de micrófono están disponibles
+    y obtener el DEVICE_INDEX correcto para el .env
+    """
+    try:
+        pa = pyaudio.PyAudio()
+        lines = ["Dispositivos de audio disponibles:\n"]
+        for i in range(pa.get_device_count()):
+            info = pa.get_device_info_by_index(i)
+            if info["maxInputChannels"] > 0:
+                lines.append(
+                    f"  [{i}] {info['name']} "
+                    f"(inputs: {info['maxInputChannels']}, "
+                    f"rate: {int(info['defaultSampleRate'])} Hz)"
+                )
+        pa.terminate()
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Error al listar dispositivos: {str(e)}"
 
 
 if __name__ == "__main__":
