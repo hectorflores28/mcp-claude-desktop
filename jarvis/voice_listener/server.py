@@ -11,7 +11,7 @@ import wave
 import struct
 import math
 import pyaudio
-import audioop
+import numpy as np
 from faster_whisper import WhisperModel
 from dotenv import load_dotenv
 
@@ -98,7 +98,15 @@ def grabar_hasta_silencio() -> str:
     # Resamplear de RECORD_RATE → SAMPLE_RATE para Whisper
     raw_audio = b"".join(frames)
     if RECORD_RATE != SAMPLE_RATE:
-        resampled, _ = audioop.ratecv(raw_audio, 2, 1, RECORD_RATE, SAMPLE_RATE, None)
+        audio_np = np.frombuffer(raw_audio, dtype=np.int16).astype(np.float32)
+        ratio = SAMPLE_RATE / RECORD_RATE
+        new_length = int(len(audio_np) * ratio)
+        resampled_np = np.interp(
+            np.linspace(0, len(audio_np) - 1, new_length),
+            np.arange(len(audio_np)),
+            audio_np
+        ).astype(np.int16)
+        resampled = resampled_np.tobytes()
     else:
         resampled = raw_audio
 
