@@ -11,6 +11,7 @@ import wave
 import struct
 import math
 import pyaudio
+import audioop
 from faster_whisper import WhisperModel
 from dotenv import load_dotenv
 
@@ -21,7 +22,8 @@ mcp = FastMCP("voice-listener")
 # ─── Configuración ────────────────────────────────────────────────────────────
 WHISPER_MODEL_SIZE  = os.getenv("WHISPER_MODEL_SIZE", "base")
 WHISPER_LANGUAGE    = os.getenv("WHISPER_LANGUAGE", "es")
-SAMPLE_RATE         = int(os.getenv("SAMPLE_RATE", "16000"))
+SAMPLE_RATE         = int(os.getenv("SAMPLE_RATE", "16000"))   # tasa objetivo para Whisper
+RECORD_RATE         = int(os.getenv("RECORD_RATE", "44100"))    # tasa real del dispositivo
 CHUNK               = int(os.getenv("CHUNK", "1024"))
 SILENCE_THRESHOLD   = float(os.getenv("SILENCE_THRESHOLD", "500"))   # RMS amplitude
 SILENCE_DURATION    = float(os.getenv("SILENCE_DURATION", "2.0"))    # segundos de silencio para cortar
@@ -54,11 +56,11 @@ def grabar_hasta_silencio() -> str:
     # Seleccionar dispositivo
     device_index = int(DEVICE_INDEX) if DEVICE_INDEX is not None else None
 
-    # Abrir stream de entrada
+    # Abrir stream de entrada a la tasa nativa del dispositivo
     stream = pa.open(
         format=pyaudio.paInt16,
         channels=1,
-        rate=SAMPLE_RATE,
+        rate=RECORD_RATE,
         input=True,
         input_device_index=device_index,
         frames_per_buffer=CHUNK
@@ -93,13 +95,20 @@ def grabar_hasta_silencio() -> str:
 
     print("[voice-listener] ✅ Silencio detectado, procesando audio...")
 
+    # Resamplear de RECORD_RATE → SAMPLE_RATE para Whisper
+    raw_audio = b"".join(frames)
+    if RECORD_RATE != SAMPLE_RATE:
+        resampled, _ = audioop.ratecv(raw_audio, 2, 1, RECORD_RATE, SAMPLE_RATE, None)
+    else:
+        resampled = raw_audio
+
     # Guardar como WAV temporal
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
     with wave.open(tmp.name, "wb") as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)   # 16-bit = 2 bytes
         wf.setframerate(SAMPLE_RATE)
-        wf.writeframes(b"".join(frames))
+        wf.writeframes(resampled)
 
     return tmp.name
 
