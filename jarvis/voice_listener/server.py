@@ -38,35 +38,13 @@ def grabar_hasta_silencio() -> str:
     Graba audio con sounddevice hasta detectar silencio prolongado.
     Devuelve la ruta del archivo WAV temporal.
     """
-    # Buscar dispositivo Jabra en WASAPI automaticamente
-    device_index = None
+    device_index = int(DEVICE_INDEX) if DEVICE_INDEX is not None else None
     record_rate = RECORD_RATE
     try:
-        hostapis = sd.query_hostapis()
-        wasapi_idx = next((i for i, h in enumerate(hostapis) if 'WASAPI' in h['name']), None)
-        devices = sd.query_devices()
-        # Primero busca Jabra en WASAPI
-        for i, d in enumerate(devices):
-            nombre = d['name'].lower()
-            if d['max_input_channels'] > 0 and d['hostapi'] == wasapi_idx and 'jabra' in nombre:
-                device_index = i
-                record_rate = int(d['default_samplerate'])
-                break
-        # Fallback: cualquier WASAPI con input
-        if device_index is None and wasapi_idx is not None:
-            for i, d in enumerate(devices):
-                if d['max_input_channels'] > 0 and d['hostapi'] == wasapi_idx:
-                    device_index = i
-                    record_rate = int(d['default_samplerate'])
-                    break
-        # Fallback final: usar .env
-        if device_index is None:
-            device_index = int(DEVICE_INDEX) if DEVICE_INDEX is not None else None
         info = sd.query_devices(device_index, 'input')
         print(f"[voice-listener] Dispositivo: [{device_index}] {info['name']} @ {record_rate} Hz")
     except Exception as diag_e:
         print(f"[voice-listener] Advertencia diagnostico: {diag_e}")
-        record_rate = RECORD_RATE
 
     print("[voice-listener] Escuchando... (habla ahora)")
 
