@@ -49,7 +49,7 @@ def grabar_hasta_silencio() -> str:
     except Exception as diag_e:
         print(f"[voice-listener] Advertencia diagnóstico: {diag_e}")
 
-    print("[voice-listener] 🎤 Escuchando... (habla ahora)")
+    print("[voice-listener] Escuchando... (habla ahora)")
 
     chunk_duration = 0.1  # segundos por chunk
     chunk_samples  = int(SAMPLE_RATE * chunk_duration)
@@ -82,7 +82,7 @@ def grabar_hasta_silencio() -> str:
             if has_voice and silence_count >= silence_chunks_needed:
                 break
 
-    print("[voice-listener] ✅ Silencio detectado, procesando audio...")
+    print("[voice-listener] Silencio detectado, procesando audio...")
 
     # Concatenar audio
     audio_np = np.concatenate(frames, axis=0).flatten()
@@ -130,7 +130,7 @@ def listen() -> str:
         texto = " ".join(seg.text.strip() for seg in segments).strip()
 
         if texto:
-            print(f"[voice-listener] 📝 Transcripción: {texto}")
+            print(f"[voice-listener] Transcripcion: {texto}")
             return texto
         else:
             return "No se detectó texto en el audio."
