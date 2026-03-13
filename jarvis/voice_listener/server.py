@@ -56,6 +56,15 @@ def grabar_hasta_silencio() -> str:
     # Seleccionar dispositivo
     device_index = int(DEVICE_INDEX) if DEVICE_INDEX is not None else None
 
+    # Diagnóstico: imprimir info del dispositivo seleccionado
+    try:
+        info = pa.get_device_info_by_index(device_index) if device_index is not None else pa.get_default_input_device_info()
+        print(f"[voice-listener] Dispositivo: [{device_index}] {info['name']}")
+        print(f"[voice-listener] Rate nativa: {int(info['defaultSampleRate'])} Hz, canales: {info['maxInputChannels']}")
+        print(f"[voice-listener] RECORD_RATE configurado: {RECORD_RATE} Hz")
+    except Exception as diag_e:
+        print(f"[voice-listener] Error al obtener info del dispositivo: {diag_e}")
+
     # Abrir stream de entrada a la tasa nativa del dispositivo
     stream = pa.open(
         format=pyaudio.paInt16,
