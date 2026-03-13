@@ -35,6 +35,32 @@ print("[voice-listener] Modelo listo. Esperando llamadas...")
 
 def grabar_hasta_silencio() -> str:
     """
+    Graba audio delegando a un subprocess interactivo con acceso al audio de Windows.
+    Devuelve la ruta del archivo WAV temporal.
+    """
+    import subprocess
+    import sys
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+    tmp_path = tmp.name
+    tmp.close()
+
+    script = os.path.join(os.path.dirname(__file__), "recorder.py")
+    result = subprocess.run(
+        [sys.executable, script, tmp_path],
+        timeout=MAX_DURATION + 10,
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "recorder.py fallo sin mensaje")
+
+    print(f"[voice-listener] Audio grabado: {tmp_path}")
+    return tmp_path
+
+
+def grabar_hasta_silencio_inline() -> str:
+    """
     Graba audio con sounddevice hasta detectar silencio prolongado.
     Devuelve la ruta del archivo WAV temporal.
     """
