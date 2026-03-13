@@ -38,16 +38,35 @@ def grabar_hasta_silencio() -> str:
     Graba audio con sounddevice hasta detectar silencio prolongado.
     Devuelve la ruta del archivo WAV temporal.
     """
-    device_index = int(DEVICE_INDEX) if DEVICE_INDEX is not None else None
-
-    # Diagnóstico
+    # Buscar dispositivo Jabra en WASAPI automaticamente
+    device_index = None
+    record_rate = RECORD_RATE
     try:
+        hostapis = sd.query_hostapis()
+        wasapi_idx = next((i for i, h in enumerate(hostapis) if 'WASAPI' in h['name']), None)
+        devices = sd.query_devices()
+        # Primero busca Jabra en WASAPI
+        for i, d in enumerate(devices):
+            nombre = d['name'].lower()
+            if d['max_input_channels'] > 0 and d['hostapi'] == wasapi_idx and 'jabra' in nombre:
+                device_index = i
+                record_rate = int(d['default_samplerate'])
+                break
+        # Fallback: cualquier WASAPI con input
+        if device_index is None and wasapi_idx is not None:
+            for i, d in enumerate(devices):
+                if d['max_input_channels'] > 0 and d['hostapi'] == wasapi_idx:
+                    device_index = i
+                    record_rate = int(d['default_samplerate'])
+                    break
+        # Fallback final: usar .env
+        if device_index is None:
+            device_index = int(DEVICE_INDEX) if DEVICE_INDEX is not None else None
         info = sd.query_devices(device_index, 'input')
-        print(f"[voice-listener] Dispositivo: [{device_index}] {info['name']}")
-        print(f"[voice-listener] Rate nativa: {int(info['default_samplerate'])} Hz")
-        print(f"[voice-listener] SAMPLE_RATE Whisper: {SAMPLE_RATE} Hz")
+        print(f"[voice-listener] Dispositivo: [{device_index}] {info['name']} @ {record_rate} Hz")
     except Exception as diag_e:
-        print(f"[voice-listener] Advertencia diagnóstico: {diag_e}")
+        print(f"[voice-listener] Advertencia diagnostico: {diag_e}")
+        record_rate = RECORD_RATE
 
     print("[voice-listener] Escuchando... (habla ahora)")
 
@@ -61,7 +80,7 @@ def grabar_hasta_silencio() -> str:
     has_voice = False
 
     with sd.InputStream(
-        samplerate=RECORD_RATE,
+        samplerate=record_rate,
         channels=1,
         dtype='float32',
         device=device_index,
@@ -88,8 +107,8 @@ def grabar_hasta_silencio() -> str:
     audio_np = np.concatenate(frames, axis=0).flatten()
 
     # Resamplear de RECORD_RATE → SAMPLE_RATE para Whisper
-    if RECORD_RATE != SAMPLE_RATE:
-        new_length = int(len(audio_np) * SAMPLE_RATE / RECORD_RATE)
+    if record_rate != SAMPLE_RATE:
+        new_length = int(len(audio_np) * SAMPLE_RATE / record_rate)
         audio_np = np.interp(
             np.linspace(0, len(audio_np) - 1, new_length),
             np.arange(len(audio_np)),
