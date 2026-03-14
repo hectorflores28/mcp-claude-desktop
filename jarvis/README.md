@@ -1,3 +1,7 @@
+###
+| Jarvis Voice Listener pendiente AUN (VOICE_JARVIS YA)(JARVIS_SKILL UNA BASE)(JARVIS_MEMORY_ERROR)"
+###
+
 # 🤖 JARVIS - Sistema de Asistente de Voz MCP
 
 Sistema conversacional de voz a voz compuesto por 4 servidores MCP independientes.
