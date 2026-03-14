@@ -46,11 +46,18 @@ def grabar_hasta_silencio() -> str:
     tmp.close()
 
     script = os.path.join(os.path.dirname(__file__), "recorder.py")
+
+    # CREATE_NEW_CONSOLE permite al subprocess heredar sesion de audio de Windows
+    kwargs = {}
+    if sys.platform == 'win32':
+        kwargs['creationflags'] = 0x00000010  # CREATE_NEW_CONSOLE
+
     result = subprocess.run(
         [sys.executable, script, tmp_path],
         timeout=MAX_DURATION + 10,
         capture_output=True,
-        text=True
+        text=True,
+        **kwargs
     )
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or "recorder.py fallo sin mensaje")
