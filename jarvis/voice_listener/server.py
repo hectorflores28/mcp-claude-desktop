@@ -9,7 +9,7 @@ import os
 import tempfile
 import wave
 import numpy as np
-import sounddevice as sd
+import pyaudiowpatch as pyaudio
 from faster_whisper import WhisperModel
 from dotenv import load_dotenv
 
@@ -35,34 +35,59 @@ print("[voice-listener] Modelo listo. Esperando llamadas...")
 
 def grabar_hasta_silencio() -> str:
     """
-    Graba audio delegando a un subprocess interactivo con acceso al audio de Windows.
+    Graba audio con pyaudiowpatch (WASAPI) inline.
     Devuelve la ruta del archivo WAV temporal.
     """
-    import subprocess
-    import sys
+    CHUNK       = 1024
+    RECORD_SECS = MAX_DURATION
+    DEVICE      = 15
+    RATE        = 48000
+
+    pa = pyaudio.PyAudio()
+    s = pa.open(format=pyaudio.paInt16, channels=1, rate=RATE,
+                input=True, input_device_index=DEVICE, frames_per_buffer=CHUNK)
+
+    print("[voice-listener] Escuchando...")
+    frames = []
+    silence_count = 0
+    has_voice = False
+    silence_needed = int(SILENCE_DURATION * RATE / CHUNK)
+    max_chunks = int(RECORD_SECS * RATE / CHUNK)
+
+    for _ in range(max_chunks):
+        data = s.read(CHUNK, exception_on_overflow=False)
+        frames.append(data)
+        audio_chunk = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32767.0
+        rms = float(np.sqrt(np.mean(audio_chunk ** 2)))
+        if rms > SILENCE_THRESHOLD:
+            has_voice = True
+            silence_count = 0
+        else:
+            if has_voice:
+                silence_count += 1
+        if has_voice and silence_count >= silence_needed:
+            break
+
+    s.stop_stream(); s.close(); pa.terminate()
+    print("[voice-listener] Silencio detectado, procesando...")
+
+    raw = b''.join(frames)
+    audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32767.0
+
+    # Resamplear a 16000 Hz para Whisper
+    new_len = int(len(audio) * SAMPLE_RATE / RATE)
+    audio = np.interp(np.linspace(0, len(audio)-1, new_len), np.arange(len(audio)), audio)
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
     tmp_path = tmp.name
     tmp.close()
 
-    script = os.path.join(os.path.dirname(__file__), "recorder.py")
+    with wave.open(tmp_path, 'wb') as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(SAMPLE_RATE)
+        wf.writeframes((audio * 32767).astype(np.int16).tobytes())
 
-    # CREATE_NEW_CONSOLE permite al subprocess heredar sesion de audio de Windows
-    kwargs = {}
-    if sys.platform == 'win32':
-        kwargs['creationflags'] = 0x00000010  # CREATE_NEW_CONSOLE
-
-    result = subprocess.run(
-        [sys.executable, script, tmp_path],
-        timeout=MAX_DURATION + 10,
-        capture_output=True,
-        text=True,
-        **kwargs
-    )
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or "recorder.py fallo sin mensaje")
-
-    print(f"[voice-listener] Audio grabado: {tmp_path}")
     return tmp_path
 
 
