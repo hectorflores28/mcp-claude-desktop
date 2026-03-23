@@ -1,0 +1,13 @@
+{
+    "mcpServers": {
+        "mcp-claude": {
+            "command": "claude",
+            "args": [
+                "--directory",
+                "PATH:/xampp/htdocs/mcp-claude-desktop",
+                "run",
+                "app/main.py"
+            ]
+        }
+    }
+}
